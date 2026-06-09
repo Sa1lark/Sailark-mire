@@ -1,6 +1,7 @@
 import requests
 import base64
 import os
+import hashlib
 
 class Updater:
     def __init__(self, token, owner, repo, branch="main"):
@@ -14,17 +15,20 @@ class Updater:
         }
         self.base_url = f"https://api.github.com/repos/{owner}/{repo}"
 
+    def get_current_file_sha_and_content(self, path="all_v2ray_configs.txt"):
+        """دریافت محتوای فعلی فایل برای مقایسه"""
+        url = f"{self.base_url}/contents/{path}"
+        resp = requests.get(url, headers=self.headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = base64.b64decode(data["content"]).decode('utf-8')
+            return data["sha"], content
+        return None, None
+
     def get_all_configs(self):
         urls = [
             "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no1.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no2.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no3.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no4.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no5.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no6.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no7.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no8.txt",
-            "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no9.txt",
+            # ... (بقیه لینک‌ها)
             "https://raw.githubusercontent.com/V2RAYCONFIGSPOOL/V2RAY_SUB/refs/heads/main/v2ray_configs_no10.txt"
         ]
         
@@ -43,42 +47,49 @@ class Updater:
         return "".join(all_content)
 
     def upload_combined_file(self):
-        content = self.get_all_configs()
-        if not content.strip():
+        new_content = self.get_all_configs()
+        if not new_content.strip():
             print("⚠️ هیچ محتوایی دریافت نشد!")
             return False
 
-        path = "all_v2ray_configs.txt"
-        url = f"{self.base_url}/contents/{path}"
+        # دریافت محتوای قبلی
+        old_sha, old_content = self.get_current_file_sha_and_content()
 
-        encoded = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+        # مقایسه محتوا (اگر تغییری نکرده، آپلود نکن)
+        if old_content and hashlib.md5(old_content.encode()).hexdigest() == hashlib.md5(new_content.encode()).hexdigest():
+            print("🔄 هیچ تغییری در کانفیگ‌ها ایجاد نشده. آپلود انجام نشد.")
+            return True
+
+        print("🔄 تغییر تشخیص داده شد → در حال آپلود...")
+
+        encoded = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
 
         data = {
-            "message": "Update v2ray configs - Auto",
+            "message": "Update v2ray configs - Auto (changed detected)",
             "branch": self.branch,
             "content": encoded
         }
 
-        resp = requests.get(url, headers=self.headers)
-        if resp.status_code == 200:
-            data["sha"] = resp.json()["sha"]
+        if old_sha:
+            data["sha"] = old_sha
 
+        url = f"{self.base_url}/contents/all_v2ray_configs.txt"
         response = requests.put(url, json=data, headers=self.headers)
 
         if response.status_code in [200, 201]:
-            print("🎉 فایل all_v2ray_configs.txt با موفقیت آپدیت شد")
+            print("🎉 آپدیت موفق! محتوا تغییر کرده بود.")
             return True
         else:
             print(f"❌ خطا: {response.status_code}")
-            print(response.text[:400])
+            print(response.text[:300])
             return False
 
 
 # ===================== تنظیمات =====================
 if __name__ == "__main__":
-    TOKEN = os.getenv("GITHUB_TOKEN")          # ← از GitHub Secret میگیره
+    TOKEN = os.getenv("GITHUB_TOKEN")
     OWNER = "Sa1lark"
-    REPO = "Sailark-mire"                     # اسم ریپازیتوریت
+    REPO = "Sailark-mire"
     BRANCH = "main"
 
     if not TOKEN:
