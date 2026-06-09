@@ -1,7 +1,6 @@
 import requests
 import base64
 import os
-import hashlib
 
 class Updater:
     def __init__(self, token, owner, repo, branch="main"):
@@ -14,6 +13,21 @@ class Updater:
             "Accept": "application/vnd.github.v3+json"
         }
         self.base_url = f"https://api.github.com/repos/{owner}/{repo}"
+
+    def delete_old_file(self):
+        """فایل قدیمی را کامل حذف می‌کند"""
+        url = f"{self.base_url}/contents/all_v2ray_configs.txt"
+        resp = requests.get(url, headers=self.headers)
+        
+        if resp.status_code == 200:
+            sha = resp.json()["sha"]
+            delete_data = {
+                "message": "Delete old configs file",
+                "sha": sha,
+                "branch": self.branch
+            }
+            requests.delete(url, json=delete_data, headers=self.headers)
+            print("🗑️ فایل قدیمی حذف شد")
 
     def get_all_configs(self):
         urls = [
@@ -37,52 +51,35 @@ class Updater:
                 content = r.text.strip()
                 if content:
                     all_content.append(f"===== CONFIG NO {i} =====\n{content}\n\n")
+                    print(f"✅ کانفیگ {i} دریافت شد")
             except Exception as e:
                 print(f"❌ خطا در کانفیگ {i}: {e}")
         
         return "".join(all_content)
 
-    def upload_combined_file(self):
-        new_content = self.get_all_configs()
-        if not new_content.strip():
-            print("⚠️ هیچ محتوایی دریافت نشد!")
+    def upload_new_file(self, content):
+        """آپلود فایل جدید"""
+        if not content.strip():
+            print("⚠️ محتوا خالی است!")
             return False
 
-        # دریافت محتوای فعلی فایل
-        url = f"{self.base_url}/contents/all_v2ray_configs.txt"
-        resp = requests.get(url, headers=self.headers)
+        encoded = base64.b64encode(content.encode('utf-8')).decode('utf-8')
         
-        old_sha = None
-        old_content = ""
-        if resp.status_code == 200:
-            data = resp.json()
-            old_sha = data["sha"]
-            old_content = base64.b64decode(data["content"]).decode('utf-8')
-
-        # اگر تغییری نکرده، آپلود نکن
-        if old_content and hashlib.md5(old_content.encode()).hexdigest() == hashlib.md5(new_content.encode()).hexdigest():
-            print("🔄 هیچ تغییری نیست → آپلود انجام نشد")
-            return True
-
-        print("🔄 تغییر تشخیص داده شد → در حال آپلود")
-
-        encoded = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
-
         data = {
-            "message": "Update v2ray configs - Auto",
+            "message": "Update v2ray configs - Fresh file",
             "branch": self.branch,
             "content": encoded
         }
-        if old_sha:
-            data["sha"] = old_sha
 
+        url = f"{self.base_url}/contents/all_v2ray_configs.txt"
         response = requests.put(url, json=data, headers=self.headers)
 
         if response.status_code in [200, 201]:
-            print("🎉 آپدیت موفق!")
+            print("🎉 فایل جدید با موفقیت ایجاد/آپدیت شد")
             return True
         else:
-            print(f"❌ خطا: {response.status_code} - {response.text[:200]}")
+            print(f"❌ خطا: {response.status_code}")
+            print(response.text[:300])
             return False
 
 
@@ -98,4 +95,12 @@ if __name__ == "__main__":
         exit(1)
 
     updater = Updater(TOKEN, OWNER, REPO, BRANCH)
-    updater.upload_combined_file()
+    
+    print("🗑️ در حال حذف فایل قدیمی...")
+    updater.delete_old_file()
+    
+    print("📥 در حال دریافت کانفیگ‌های جدید...")
+    new_content = updater.get_all_configs()
+    
+    print("📤 در حال آپلود فایل تازه...")
+    updater.upload_new_file(new_content)
