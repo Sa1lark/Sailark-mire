@@ -2,15 +2,19 @@ name: Update V2Ray Configs
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    
     permissions:
-      contents: write      # اجازه نوشتن فایل
+      contents: write
+
+    # جلوگیری از اجرای همزمان
+    concurrency:
+      group: update-v2ray
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
